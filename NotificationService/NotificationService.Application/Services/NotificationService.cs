@@ -1,5 +1,7 @@
 using NotificationService.Application.Contracts;
+using NotificationService.Application.Extensions;
 using NotificationService.Application.Interfaces;
+using NotificationService.Application.Models;
 
 namespace NotificationService.Application.Services;
 
@@ -12,18 +14,10 @@ public class NotificationService : INotificationService
         _repository = repository;
     }
 
-    public async Task<NotificationResponse[]> GetLastThreeAsync(Guid userId)
+    public async Task<List<NotificationResponse>> GetLastThreeAsync(Guid userId)
     {
         var notifications = await _repository.GetLastThreeByUserIdAsync(userId);
-        return notifications.Select(n => new NotificationResponse
-        {
-            Id = n.Id,
-            Title = n.Title,
-            Message = n.Message,
-            Type = n.Type,
-            IsRead = n.IsRead,
-            CreatedAt = n.CreatedAt // Set from Kafka ingestion
-        }).ToArray();
+        return notifications.MapToResponses();
     }
 
     public async Task<PaginatedNotificationResponse> GetPaginatedAsync(Guid userId, int page, int pageSize)
@@ -32,31 +26,43 @@ public class NotificationService : INotificationService
         var total = await _repository.GetTotalCountByUserIdAsync(userId);
         return new PaginatedNotificationResponse
         {
-            Notifications = notifications.Select(n => new NotificationResponse
-            {
-                Id = n.Id,
-                Title = n.Title,
-                Message = n.Message,
-                Type = n.Type,
-                IsRead = n.IsRead,
-                CreatedAt = n.CreatedAt
-            }).ToArray(),
+            Notifications = notifications.MapToResponses(),
             TotalCount = total,
             Page = page,
             PageSize = pageSize
         };
     }
-    
+
     public async Task<int> GetUnreadCountAsync(Guid userId)
     {
-        // Delegate to repository for unread count (IsRead == false)
         return await _repository.GetUnreadCountByUserIdAsync(userId);
     }
-}
 
-// For Kafka processing (future integration)
-public class KafkaNotificationProcessor
-{
-    // Consume from Kafka, set CreatedAt = DateTime.UtcNow, save to repo with TargetType
-    // If TargetType.All, handle broadcast logic (e.g., queue for all users or flag)
+    public async Task MarkAsReadAsync(Guid notificationId, Guid userId)
+    {
+        var isUpdated = await _repository.MarkAsReadAsync(notificationId, userId);
+        if (!isUpdated)
+        {
+            throw new UnauthorizedAccessException("Уведомление не найдено или не принадлежит пользователю.");
+        }
+    }
+
+    public async Task AddBatchAsync(List<Guid> userIds, string title, string message, NotificationType type,
+        TargetType targetType)
+    {
+        var createdAt = DateTime.UtcNow;
+        var notifications = userIds.Select(userId => new Notification
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Title = title,
+            Message = message,
+            Type = type,
+            IsRead = false,
+            CreatedAt = createdAt,
+            TargetType = targetType
+        }).ToList();
+
+        await _repository.AddBatchAsync(notifications);
+    }
 }

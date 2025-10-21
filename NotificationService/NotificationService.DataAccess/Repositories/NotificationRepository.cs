@@ -20,33 +20,55 @@ public class NotificationRepository : INotificationRepository
         await _context.SaveChangesAsync();
     }
 
-    public async Task<Notification[]> GetLastThreeByUserIdAsync(Guid userId)
+    public async Task AddBatchAsync(List<Notification> notifications)
+    {
+        _context.Notifications.AddRange(notifications);
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<List<Notification>> GetLastThreeByUserIdAsync(Guid userId)
     {
         return await _context.Notifications
             .Where(n => n.UserId == userId)
             .OrderByDescending(n => n.CreatedAt)
             .Take(3)
-            .ToArrayAsync();
+            .ToListAsync();
     }
 
-    public async Task<Notification[]> GetPaginatedByUserIdAsync(Guid userId, int page, int pageSize)
+    public async Task<List<Notification>> GetPaginatedByUserIdAsync(Guid userId, int page, int pageSize)
     {
         return await _context.Notifications
             .Where(n => n.UserId == userId)
             .OrderByDescending(n => n.CreatedAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .ToArrayAsync();
+            .ToListAsync();
     }
 
     public async Task<int> GetTotalCountByUserIdAsync(Guid userId)
     {
-        return await _context.Notifications.CountAsync(n => n.UserId == userId);
+        return await _context.Notifications
+            .CountAsync(n => n.UserId == userId);
     }
 
     public async Task<int> GetUnreadCountByUserIdAsync(Guid userId)
     {
         return await _context.Notifications
-            .CountAsync(n => n.UserId == userId && !n.IsRead); // Count unread for the user
+            .CountAsync(n => n.UserId == userId && !n.IsRead);
+    }
+
+    public async Task<bool> MarkAsReadAsync(Guid notificationId, Guid userId)
+    {
+        var notification = await _context.Notifications
+            .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
+
+        if (notification == null)
+        {
+            return false;
+        }
+
+        notification.IsRead = true;
+        await _context.SaveChangesAsync();
+        return true;
     }
 }

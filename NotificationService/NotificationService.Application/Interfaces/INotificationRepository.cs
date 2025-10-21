@@ -5,9 +5,10 @@ namespace NotificationService.Application.Interfaces;
 public interface INotificationRepository
 {
     Task AddAsync(Notification notification);
-    Task<Notification[]> GetLastThreeByUserIdAsync(Guid userId);
-    Task<Notification[]> GetPaginatedByUserIdAsync(Guid userId, int page, int pageSize);
+    Task<List<Notification>> GetLastThreeByUserIdAsync(Guid userId);
+    Task<List<Notification>> GetPaginatedByUserIdAsync(Guid userId, int page, int pageSize);
     Task<int> GetTotalCountByUserIdAsync(Guid userId);
     Task<int> GetUnreadCountByUserIdAsync(Guid userId);
-    // For broadcast: Task AddBroadcastAsync(BroadcastNotification broadcast);
+    Task<bool> MarkAsReadAsync(Guid notificationId, Guid userId);
+    Task AddBatchAsync(List<Notification> notifications);
 }

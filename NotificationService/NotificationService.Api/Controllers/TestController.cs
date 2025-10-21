@@ -9,70 +9,30 @@ namespace NotificationService.Api.Controllers;
 [Route("api/[controller]")]
 public class TestController : ControllerBase
 {
-    private readonly INotificationRepository _repository;
+    private readonly INotificationService _notificationService;
+    private readonly ILogger<TestController> _logger;
 
-    public TestController(INotificationRepository repository)
+    public TestController(INotificationService notificationService, ILogger<TestController> logger)
     {
-        _repository = repository;
+        _notificationService = notificationService;
+        _logger = logger;
     }
 
-    // POST: api/test/add-single - Adds a test notification for a single user
-    [HttpPost("add-single")]
-    public async Task<ActionResult> AddSingleNotification([FromBody] AddTestNotificationRequest request)
+    [HttpPost("add-batch")]
+    public async Task<int> AddBatchNotification([FromBody] AddTestBatchRequest request)
     {
-        var notification = new Notification
+        if (!request.UserIds.Any())
         {
-            Id = Guid.NewGuid(),
-            UserId = request.UserId,
-            Title = request.Title,
-            Message = request.Message,
-            Type = request.Type,
-            IsRead = false,
-            CreatedAt = DateTime.UtcNow, // Timestamp as if from Kafka
-            TargetType = TargetType.Single // Enum for single/multiple/all
-        };
-        await _repository.AddAsync(notification);
-        return Ok("Test notification added for single user.");
-    }
-
-    // POST: api/test/add-multiple - Adds test notifications for multiple users
-    [HttpPost("add-multiple")]
-    public async Task<ActionResult> AddMultipleNotifications([FromBody] AddTestMultipleRequest request)
-    {
-        foreach (var userId in request.UserIds)
-        {
-            var notification = new Notification
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                Title = request.Title,
-                Message = request.Message,
-                Type = request.Type,
-                IsRead = false,
-                CreatedAt = DateTime.UtcNow,
-                TargetType = TargetType.Multiple
-            };
-            await _repository.AddAsync(notification);
+            _logger.LogWarning("Attempt to add batch with empty UserIds");
+            throw new ArgumentException("Список UserIds не может быть пустым.");
         }
-        return Ok($"Test notifications added for {request.UserIds.Count} users.");
-    }
 
-    // POST: api/test/add-broadcast - Adds a broadcast test notification (for all users, but simulate with a flag)
-    [HttpPost("add-broadcast")]
-    public async Task<ActionResult> AddBroadcastNotification([FromBody] AddTestNotificationRequest request)
-    {
-        var notification = new Notification
-        {
-            Id = Guid.NewGuid(),
-            UserId = Guid.Empty, // Or handle broadcast separately
-            Title = request.Title,
-            Message = request.Message,
-            Type = request.Type,
-            IsRead = false,
-            CreatedAt = DateTime.UtcNow,
-            TargetType = TargetType.All
-        };
-        await _repository.AddAsync(notification); // In production, replicate for all or use a broadcast entity
-        return Ok("Test broadcast notification added.");
+        var targetType = request.UserIds.Count == 1 ? TargetType.Single : TargetType.Multiple;
+        _logger.LogInformation("Adding batch notification for {Count} users with type {TargetType}",
+            request.UserIds.Count, targetType);
+        await _notificationService.AddBatchAsync(request.UserIds, request.Title, request.Message, request.Type,
+            targetType);
+        _logger.LogInformation("Batch notification added successfully for {Count} users", request.UserIds.Count);
+        return request.UserIds.Count;
     }
 }

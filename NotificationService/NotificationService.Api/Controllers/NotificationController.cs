@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using NotificationService.Api.Configuration;
 using NotificationService.Application.Contracts;
 using NotificationService.Application.Interfaces;
 
@@ -9,25 +10,48 @@ namespace NotificationService.Api.Controllers;
 public class NotificationController : ControllerBase
 {
     private readonly INotificationService _notificationService;
+    private readonly ILogger<NotificationController> _logger;
 
-    public NotificationController(INotificationService notificationService)
+    public NotificationController(INotificationService notificationService, ILogger<NotificationController> logger)
     {
         _notificationService = notificationService;
+        _logger = logger;
     }
 
-    // GET: api/notification/last-three/{userId} - Returns last 3 notifications for a user
-    [HttpGet("last-three/{userId:guid}")]
-    public async Task<ActionResult<NotificationResponse[]>> GetLastThreeNotifications(Guid userId)
+    [HttpGet("last-three")]
+    public async Task<List<NotificationResponse>> GetLastThreeNotifications()
     {
+        var userId = User.GetCurrentUserId();
+        _logger.LogInformation("Fetching last three notifications for user {UserId}", userId);
         var notifications = await _notificationService.GetLastThreeAsync(userId);
-        return Ok(notifications);
+        return notifications;
     }
 
-    // GET: api/notification/{userId} - Paginated notifications, 10 per page, chronological from latest
-    [HttpGet("{userId:guid}")]
-    public async Task<ActionResult<PaginatedNotificationResponse>> GetNotificationsAsync(Guid userId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    [HttpGet]
+    public async Task<PaginatedNotificationResponse> GetNotifications([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
+        var userId = User.GetCurrentUserId();
+        _logger.LogInformation("Fetching paginated notifications for user {UserId}, page {Page}, size {PageSize}", userId, page, pageSize);
         var notifications = await _notificationService.GetPaginatedAsync(userId, page, pageSize);
-        return Ok(notifications);
+        return notifications;
+    }
+
+    [HttpGet("unread-count")]
+    public async Task<int> GetUnreadCount()
+    {
+        var userId = User.GetCurrentUserId();
+        _logger.LogInformation("Fetching unread count for user {UserId}", userId);
+        var count = await _notificationService.GetUnreadCountAsync(userId);
+        return count;
+    }
+
+    [HttpPut("read/{notificationId:guid}")]
+    public async Task<bool> MarkAsRead(Guid notificationId)
+    {
+        var userId = User.GetCurrentUserId();
+        _logger.LogInformation("Marking notification {NotificationId} as read for user {UserId}", notificationId, userId);
+        await _notificationService.MarkAsReadAsync(notificationId, userId);
+        _logger.LogInformation("Notification {NotificationId} marked as read for user {UserId}", notificationId, userId);
+        return true;
     }
 }
