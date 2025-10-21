@@ -15,6 +15,22 @@ services:
     networks:
       - user-net
 
+  notification-service:
+    build:
+      context: ..
+      dockerfile: ./scripts/NotificationService.Dockerfile
+      args:
+        - BUILD_CONFIG=${BUILD_CONFIG:-Release}
+    ports:
+      - "5002:8080"
+    depends_on:
+      - postgres
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=NotificationService;Username=postgres;Password=postgres
+    networks:
+      - user-net
+
   postgres:
     image: postgres:15
     ports:

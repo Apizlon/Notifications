@@ -1,7 +1,7 @@
-using System.Text;
 using Microsoft.OpenApi.Models;
 using NotificationService.Api.Configuration;
 using NotificationService.Api.Filters;
+using NotificationService.Api.Hubs;
 using NotificationService.Application.Extensions;
 using NotificationService.DataAccess.Extensions;
 
@@ -47,8 +47,17 @@ else
     builder.Services.AddSwaggerGen();
 }
 
-builder.Services.AddServices();
 builder.Services.AddRepositories(builder.Configuration);
+builder.Services.AddServices();
+builder.Services.AddApiServices();
+
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+});
+
+builder.Services.ConfigureJwt(builder.Configuration);
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -67,5 +76,6 @@ if (app.Environment.IsDevelopment())
 {
     app.MapGet("/", () => Results.Redirect("/swagger"));
 }
+app.MapHub<NotificationHub>("/notificationHub");
 
 app.Run();

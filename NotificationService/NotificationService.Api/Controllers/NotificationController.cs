@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NotificationService.Api.Configuration;
 using NotificationService.Application.Contracts;
@@ -7,6 +8,7 @@ namespace NotificationService.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class NotificationController : ControllerBase
 {
     private readonly INotificationService _notificationService;

@@ -17,6 +17,6 @@ public class PingController : ControllerBase
     public object Get()
     {
         _logger.LogInformation("Ping request received");
-        return new { Message = "UserService is alive", Timestamp = DateTime.UtcNow };
+        return new { Message = "NotificationService is alive", Timestamp = DateTime.UtcNow };
     }
 }

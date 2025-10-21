@@ -31,3 +31,39 @@ SELECT * FROM users;
 
 В Docker Desktop:
 `psql -U <пользователь> -d <имя_базы> -c "<SQL-запрос>"`
+
+## Testing SignalR connection in DevTools
+```
+const token = 'YOUR_FULL_TOKEN';
+
+const connection = new signalR.HubConnectionBuilder()
+  .withUrl(`http://localhost:5002/notificationHub?access_token=${encodeURIComponent(token)}`)
+  .configureLogging(signalR.LogLevel.Information) // Детальные логи: Negotiate, Errors
+  .build();
+
+connection.start()
+  .then(() => {
+    console.log('✅ Connected to SignalR Hub');
+    // Invoke RequestUnreadCount
+    return connection.invoke('RequestUnreadCount');
+  })
+  .then(() => {
+    console.log('✅ RequestUnreadCount invoked');
+  })
+  .catch((err) => {
+    console.error('❌ Connection Error:', err);
+  });
+
+// Listen для сообщений
+connection.on('ReceiveUnreadCount', (count) => {
+  console.log('📩 Unread Count received:', count); // От хаба или sender
+});
+
+connection.onclose((err) => {
+  console.log('🔌 Connection closed:', err ? err.message : 'OK');
+});
+
+// Авто-disconnect через 1 мин
+setTimeout(() => connection.stop(), 60000);
+
+```
