@@ -4,6 +4,7 @@ using NotificationService.Api.Filters;
 using NotificationService.Api.Hubs;
 using NotificationService.Application.Extensions;
 using NotificationService.DataAccess.Extensions;
+using NotificationService.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +51,7 @@ else
 builder.Services.AddRepositories(builder.Configuration);
 builder.Services.AddServices();
 builder.Services.AddApiServices();
+builder.Services.AddInfrastructureServices(builder.Configuration);
 
 builder.Services.AddSignalR(options =>
 {
