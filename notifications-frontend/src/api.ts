@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { HubConnectionBuilder, HubConnection, LogLevel } from '@microsoft/signalr';
-import type { PaginatedNotifications, SendNotificationData } from './types';
+import type { PaginatedNotifications, SendNotificationData, Notification } from './types';
 
 const USER_API = 'http://localhost:5001/api';
 const NOTIFICATION_API = 'http://localhost:5002/api';
@@ -8,39 +8,46 @@ const NOTIFICATION_API = 'http://localhost:5002/api';
 let signalRConnection: HubConnection | null = null;
 
 export const getSignalRConnection = (token: string) => {
-  if (signalRConnection?.state && signalRConnection.state !== 0) {
-    return signalRConnection;
+  if (!signalRConnection) {
+    signalRConnection = new HubConnectionBuilder()
+      .withUrl(`${NOTIFICATION_API.replace('/api', '')}/notificationHub`, {
+        accessTokenFactory: () => token
+      })
+      .configureLogging(LogLevel.Information)
+      .build();
   }
-
-  signalRConnection = new HubConnectionBuilder()
-    .withUrl(`${NOTIFICATION_API.replace('/api', '')}/notificationHub`, {
-      accessTokenFactory: () => token
-    })
-    .configureLogging(LogLevel.Information)
-    .build();
 
   return signalRConnection;
 };
 
 export const startSignalR = async (token: string) => {
-  if (!signalRConnection) {
-    signalRConnection = getSignalRConnection(token);
+  const connection = getSignalRConnection(token);
+  
+  if (!connection) {
+    throw new Error('Failed to create SignalR connection');
   }
 
-  if (signalRConnection.state !== 0) {
-    await signalRConnection.start();
+  try {
+    await connection.start();
     console.log('SignalR connected');
+  } catch (error) {
+    console.error('SignalR connection failed:', error);
+    throw error;
   }
 
-  return signalRConnection;
+  return connection;
 };
 
 export const stopSignalR = async () => {
-  if (signalRConnection && signalRConnection.state === 1) {
-    await signalRConnection.stop();
-    console.log('SignalR disconnected');
+  if (signalRConnection) {
+    try {
+      await signalRConnection.stop();
+      console.log('SignalR disconnected');
+    } catch (error) {
+      console.error('Error stopping SignalR:', error);
+    }
+    signalRConnection = null;
   }
-  signalRConnection = null;
 };
 
 // Auth API
@@ -70,7 +77,7 @@ export const fetchNotifications = (
   });
 
 export const markAsRead = (token: string, id: string) =>
-  axios.put(`${NOTIFICATION_API}/notification/${id}/read`, {}, {
+  axios.put(`${NOTIFICATION_API}/notification/read/${id}`, {}, {
     headers: { Authorization: `Bearer ${token}` }
   });
 

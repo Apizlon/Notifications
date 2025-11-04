@@ -6,7 +6,7 @@ import type { Notification } from '../types';
 import './NotificationsPage.css';
 
 const NotificationsPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, unreadCount, signalRConnection } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [page, setPage] = useState(1);
@@ -16,6 +16,90 @@ const NotificationsPage: React.FC = () => {
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 10;
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Локальный счётчик непрочитанных на текущей странице
+  const unreadOnPage = notifications.filter(n => !n.isRead).length;
+
+  const loadNotifications = useCallback(async (currentPage = 1, append = false) => {
+    if (!user?.token) {
+      setLoading(false);
+      return;
+    }
+
+    if (!append) {
+      setLoading(true);
+    } else {
+      setLoadingMore(true);
+    }
+
+    try {
+      const response = await fetchNotifications(user.token, currentPage, pageSize);
+      const { notifications: newNotifications, totalCount: newTotal } = response.data;
+
+      setTotalCount(newTotal);
+
+      if (append) {
+        // При добавлении новых страниц не смешиваем с непрочитанными
+        setNotifications(prev => [...prev, ...newNotifications]);
+      } else {
+        setNotifications(newNotifications);
+        setPage(currentPage);
+        
+        // Сбрасываем выделение если его нет в новом списке
+        if (selectedNotification && !newNotifications.find(n => n.id === selectedNotification.id)) {
+          setSelectedNotification(null);
+        }
+      }
+
+      setHasMore(newNotifications.length === pageSize && (currentPage * pageSize) < newTotal);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, [user?.token, selectedNotification, pageSize]);
+
+  // Перезагружаем первую страницу при изменении общего количества непрочитанных
+  useEffect(() => {
+    if (page === 1 && totalCount !== 0 && unreadCount !== unreadOnPage) {
+      // Если общее количество отличается от локального, обновляем список
+      loadNotifications(1, false);
+    }
+  }, [unreadCount, totalCount, unreadOnPage, page]);
+
+  // SignalR обработчики для новых уведомлений
+  useEffect(() => {
+    if (!signalRConnection) return;
+
+    const handleNewNotification = () => {
+      console.log('New notification received, reloading page 1');
+      // Всегда перезагружаем первую страницу при новом уведомлении
+      if (page === 1) {
+        loadNotifications(1, false);
+      }
+    };
+
+    const handleUnreadUpdated = () => {
+      console.log('Unread count updated, checking if reload needed');
+      // Перезагружаем если общее количество изменилось
+      if (page === 1) {
+        loadNotifications(1, false);
+      }
+    };
+
+    signalRConnection.on('receiveNotification', handleNewNotification);
+    signalRConnection.on('receiveUnreadCount', handleUnreadUpdated);
+    signalRConnection.on('unreadCountUpdated', handleUnreadUpdated);
+    signalRConnection.on('notificationRead', handleUnreadUpdated);
+
+    return () => {
+      signalRConnection.off('receiveNotification', handleNewNotification);
+      signalRConnection.off('receiveUnreadCount', handleUnreadUpdated);
+      signalRConnection.off('unreadCountUpdated', handleUnreadUpdated);
+      signalRConnection.off('notificationRead', handleUnreadUpdated);
+    };
+  }, [signalRConnection, page, loadNotifications]);
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
@@ -42,48 +126,12 @@ const NotificationsPage: React.FC = () => {
     }
   };
 
-  const loadNotifications = useCallback(async (currentPage = 1, append = false) => {
-    if (!user?.token) {
-      setLoading(false);
-      return;
-    }
-
-    if (!append) {
-      setLoading(true);
-    } else {
-      setLoadingMore(true);
-    }
-
-    try {
-      const response = await fetchNotifications(user.token, currentPage, pageSize);
-      const { notifications: newNotifications, totalCount: newTotal } = response.data;
-
-      setTotalCount(newTotal);
-
-      if (append) {
-        setNotifications(prev => [...prev, ...newNotifications]);
-      } else {
-        setNotifications(newNotifications);
-        setPage(currentPage);
-        // Reset selection if not appending
-        if (selectedNotification && !newNotifications.find(n => n.id === selectedNotification.id)) {
-          setSelectedNotification(null);
-        }
-      }
-
-      setHasMore(newNotifications.length === pageSize && (currentPage * pageSize) < newTotal);
-    } catch (error) {
-      console.error('Error loading notifications:', error);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [user?.token, selectedNotification, pageSize]);
-
+  // Загружаем уведомления при монтировании
   useEffect(() => {
     loadNotifications(1, false);
   }, [loadNotifications]);
 
+  // Скролл для подгрузки
   useEffect(() => {
     const handleScroll = () => {
       if (scrollRef.current && !loadingMore && hasMore) {
@@ -107,11 +155,10 @@ const NotificationsPage: React.FC = () => {
     try {
       await markAsRead(user.token, id);
       
+      // Обновляем локальное состояние
       setNotifications(prev =>
-        prev.map(notification =>
-          notification.id === id 
-            ? { ...notification, isRead: true }
-            : notification
+        prev.map(n =>
+          n.id === id ? { ...n, isRead: true } : n
         )
       );
 
@@ -119,12 +166,16 @@ const NotificationsPage: React.FC = () => {
         setSelectedNotification(prev => prev ? { ...prev, isRead: true } : null);
       }
 
-      // Refresh first page to ensure consistency
+      // Перезагружаем первую страницу для синхронизации
       if (page === 1) {
         loadNotifications(1, false);
       }
     } catch (error) {
       console.error('Error marking as read:', error);
+      // При ошибке перезагружаем для восстановления состояния
+      if (page === 1) {
+        loadNotifications(1, false);
+      }
     }
   };
 
@@ -137,7 +188,6 @@ const NotificationsPage: React.FC = () => {
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
   const totalPages = Math.ceil(totalCount / pageSize);
 
   if (loading && notifications.length === 0) {
@@ -162,60 +212,67 @@ const NotificationsPage: React.FC = () => {
           <div className="sidebar-header">
             <div className="header-content">
               <h2>All Notifications</h2>
-              <span className="unread-badge">{unreadCount}</span>
+              <span className="unread-badge">{unreadOnPage}</span>
             </div>
             {totalPages > 1 && (
               <div className="pagination-info">
-                Page {page} of {totalPages}
+                Page {page} of {totalPages} • {unreadCount} total unread
               </div>
             )}
           </div>
 
           <div className="notifications-list" ref={scrollRef}>
-            {notifications.map((notification) => {
-              const isSelected = selectedNotification?.id === notification.id;
-              const isUnread = !notification.isRead;
-              
-              return (
-                <div
-                  key={notification.id}
-                  onClick={() => handleSelectNotification(notification)}
-                  className={`notification-item ${isSelected ? 'selected' : ''} ${isUnread ? 'unread' : ''}`}
-                >
-                  <div className="notification-icon">
-                    <span>{getNotificationIcon(notification.type)}</span>
-                  </div>
-                  
-                  <div className="notification-content">
-                    <div className="notification-title">
-                      {notification.title}
+            {notifications.length === 0 && !loading ? (
+              <div className="no-notifications">
+                <div className="empty-icon">🔔</div>
+                <p>No notifications yet</p>
+              </div>
+            ) : (
+              notifications.map((notification) => {
+                const isSelected = selectedNotification?.id === notification.id;
+                const isUnread = !notification.isRead;
+                
+                return (
+                  <div
+                    key={notification.id}
+                    onClick={() => handleSelectNotification(notification)}
+                    className={`notification-item ${isSelected ? 'selected' : ''} ${isUnread ? 'unread' : ''}`}
+                  >
+                    <div className="notification-icon">
+                      <span>{getNotificationIcon(notification.type)}</span>
                     </div>
-                    <div className="notification-message">
-                      {notification.message}
+                    
+                    <div className="notification-content">
+                      <div className="notification-title">
+                        {notification.title}
+                      </div>
+                      <div className="notification-message">
+                        {notification.message}
+                      </div>
+                    </div>
+                    
+                    <div className="notification-meta">
+                      <div className={`status-dot ${isUnread ? 'unread' : 'read'}`}></div>
+                      <div className="notification-time">
+                        {formatDate(notification.createdAt)}
+                      </div>
+                      {isUnread && (
+                        <button 
+                          className="mark-read-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMarkAsRead(notification.id);
+                          }}
+                          title="Mark as read"
+                        >
+                          ✓
+                        </button>
+                      )}
                     </div>
                   </div>
-                  
-                  <div className="notification-meta">
-                    <div className={`status-dot ${isUnread ? 'unread' : 'read'}`}></div>
-                    <div className="notification-time">
-                      {formatDate(notification.createdAt)}
-                    </div>
-                    {isUnread && (
-                      <button 
-                        className="mark-read-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMarkAsRead(notification.id);
-                        }}
-                        title="Mark as read"
-                      >
-                        ✓
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
 
             {loadingMore && (
               <div className="loading-more">
@@ -224,7 +281,7 @@ const NotificationsPage: React.FC = () => {
               </div>
             )}
 
-            {hasMore && !loadingMore && (
+            {hasMore && !loadingMore && notifications.length > 0 && (
               <div className="load-more-section">
                 <button 
                   onClick={() => loadNotifications(page + 1, true)}
@@ -237,7 +294,7 @@ const NotificationsPage: React.FC = () => {
 
             {!hasMore && notifications.length > 0 && (
               <div className="no-more-notifications">
-                No more notifications
+                No more notifications to load
               </div>
             )}
           </div>
@@ -277,7 +334,7 @@ const NotificationsPage: React.FC = () => {
               <div className="empty-icon">🔔</div>
               <h3>Select a notification</h3>
               <p>Click on any notification from the list to view details</p>
-              {notifications.length === 0 && (
+              {notifications.length === 0 && !loading && (
                 <p>No notifications yet</p>
               )}
             </div>

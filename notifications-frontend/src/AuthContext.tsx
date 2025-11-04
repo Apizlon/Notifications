@@ -3,8 +3,7 @@ import type { User, Notification } from './types';
 import { 
   getSignalRConnection, 
   startSignalR, 
-  stopSignalR, 
-  invokeGetUnreadCount 
+  stopSignalR 
 } from './api';
 
 interface AuthContextType {
@@ -47,6 +46,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           token
         };
         setUser(restoredUser);
+        // НЕ запрашиваем unreadCount при восстановлении - ждём события от SignalR
       } catch (error) {
         console.error('Error restoring user:', error);
         localStorage.removeItem('token');
@@ -66,36 +66,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await startSignalR(user.token);
           setSignalRConnection(connection);
 
-          // Setup event handlers
+          // Setup event handlers - регистрируем каждый раз, SignalR сам управляет дубликатами
           connection.on('receiveUnreadCount', (count: number) => {
+            console.log('Received unread count via SignalR:', count);
             setUnreadCount(count);
           });
 
           connection.on('receiveNotification', (notification: Notification) => {
+            console.log('New notification received via SignalR:', notification);
             setUnreadCount(prev => prev + 1);
           });
 
           connection.on('notificationRead', (notificationId: string) => {
+            console.log('Notification marked as read via SignalR:', notificationId);
             setUnreadCount(prev => Math.max(0, prev - 1));
           });
 
-          // Get initial unread count
-          await invokeGetUnreadCount(connection);
+          connection.on('unreadCountUpdated', (count: number) => {
+            console.log('Unread count updated via SignalR:', count);
+            setUnreadCount(count);
+          });
+
+          // НЕ вызываем invokeGetUnreadCount - сервер сам отправляет через события
+          console.log('SignalR connected, waiting for unread count from server...');
+
         } catch (error) {
           console.error('SignalR setup error:', error);
+          setSignalRConnection(null);
         }
       };
 
       setupConnection();
-    }
 
-    // Cleanup on logout
-    return () => {
+      // Cleanup
+      return () => {
+        if (signalRConnection && connectionRef.current) {
+          // SignalR автоматически удаляет обработчики при stop()
+          connectionRef.current.stop().catch(console.error);
+        }
+      };
+    } else {
+      // Cleanup when user logs out
       if (signalRConnection) {
         stopSignalR();
         setSignalRConnection(null);
+        setUnreadCount(0);
       }
-    };
+    }
   }, [user?.token]);
 
   const logout = () => {
@@ -119,6 +136,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signalRConnection,
     logout
   };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div>Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={value}>
