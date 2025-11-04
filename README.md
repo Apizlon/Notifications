@@ -1,4 +1,11 @@
-# Notifications
+# Notifications start
+
+cd Scripts
+./build.sh --dev
+./up.sh --dev
+
+старт фронта:
+npm run dev
 
 # Tools
 ## Swagger

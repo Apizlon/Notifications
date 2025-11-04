@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using UserService.Application.Contracts.User;
 using UserService.Application.Exceptions;
 using UserService.Application.Interfaces;
+using UserService.Application.Models;
 
 namespace UserService.Api.Controllers;
 
@@ -13,11 +14,13 @@ public class AuthController : ControllerBase
 {
     private readonly IUserService _userService;
     private readonly ILogger<AuthController> _logger;
+    private readonly INotificationProducer _notificationProducer;
 
-    public AuthController(IUserService userService, ILogger<AuthController> logger)
+    public AuthController(IUserService userService, ILogger<AuthController> logger, INotificationProducer notificationProducer)
     {
         _userService = userService;
         _logger = logger;
+        _notificationProducer = notificationProducer;
     }
 
     [HttpPost("register")]
@@ -26,6 +29,12 @@ public class AuthController : ControllerBase
         _logger.LogInformation("Registering new user with username {Username}", request.Username);
         var user = await _userService.RegisterAsync(request);
         _logger.LogInformation("User registered successfully: {UserId}", user.Id);
+        await _notificationProducer.ProduceNotificationAsync(new NotificationMessage
+        {
+            UserIds = [Guid.Parse(user.Id)],
+            Title = "Спасибо за регистрацию",
+            Message = "Благодарим за регистрацию в нашем сервисе, надеемся на долгосрочное сотрудничеств! Аригато озаемас!"
+        });
         return user;
     }
 
