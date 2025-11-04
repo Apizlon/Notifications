@@ -7,6 +7,7 @@ ARG BUILD_CONFIG=Release
 COPY UserService/UserService.Api/UserService.Api.csproj ./UserService.Api/
 COPY UserService/UserService.Application/UserService.Application.csproj ./UserService.Application/
 COPY UserService/UserService.DataAccess/UserService.DataAccess.csproj ./UserService.DataAccess/
+COPY UserService/UserService.Infrastructure/ ./UserService.Infrastructure/
 COPY UserService/UserService.sln .
 RUN dotnet restore ./UserService.sln
 
@@ -14,6 +15,7 @@ RUN dotnet restore ./UserService.sln
 COPY UserService/UserService.Api/ ./UserService.Api/
 COPY UserService/UserService.Application/ ./UserService.Application/
 COPY UserService/UserService.DataAccess/ ./UserService.DataAccess/
+COPY UserService/UserService.Infrastructure/ ./UserService.Infrastructure/
 WORKDIR /app/UserService.Api
 RUN dotnet publish -c $BUILD_CONFIG -o out
 

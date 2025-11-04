@@ -14,21 +14,27 @@ public class KafkaNotificationConsumer : BackgroundService
 {
     private readonly ILogger<KafkaNotificationConsumer> _logger;
     private readonly KafkaSettings _kafkaSettings;
-    private readonly IServiceProvider _serviceProvider; // Для scoped DI (INotificationService)
+    private readonly IServiceProvider _serviceProvider;
     private IConsumer<Ignore, string>? _consumer;
+    private readonly KafkaAdminManager _adminManager;
 
     public KafkaNotificationConsumer(
         ILogger<KafkaNotificationConsumer> logger,
         IOptions<KafkaSettings> kafkaOptions,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        KafkaAdminManager adminManager)
     {
         _logger = logger;
         _kafkaSettings = kafkaOptions.Value;
         _serviceProvider = serviceProvider;
+        _adminManager = adminManager;
     }
 
     public override Task StartAsync(CancellationToken cancellationToken)
     {
+        _logger.LogInformation("Checking and creating Kafka topic if needed...");
+        Task.WaitAll(_adminManager.CreateTopicIfNotExistsAsync());
+        _logger.LogInformation("Kafka topic checked/created, starting consumer");
         var config = new ConsumerConfig
         {
             BootstrapServers = _kafkaSettings.BootstrapServers,
@@ -49,7 +55,7 @@ public class KafkaNotificationConsumer : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await Task.Yield(); // Освобождаем поток для других задач (Background не блокирует startup)
+        await Task.Yield();
 
         try
         {
@@ -57,49 +63,46 @@ public class KafkaNotificationConsumer : BackgroundService
             {
                 try
                 {
-                    // Consume с timeout (1 секунда), чтобы не блокировать навсегда
                     var consumeResult = _consumer.Consume(TimeSpan.FromSeconds(1));
 
                     if (consumeResult == null || consumeResult.IsPartitionEOF)
                     {
-                        // Нет новых сообщений, продолжаем
                         continue;
                     }
 
                     _logger.LogInformation("Received message from Kafka: Partition={Partition}, Offset={Offset}",
                         consumeResult.Partition.Value, consumeResult.Offset.Value);
-
-                    // Десериализация JSON в NotificationMessage
+                    
                     var message = JsonSerializer.Deserialize<NotificationMessage>(consumeResult.Message.Value);
                     if (message == null || !message.UserIds.Any())
                     {
                         _logger.LogWarning("Invalid message format or empty UserIds, skipping. Raw: {Raw}",
                             consumeResult.Message.Value);
-                        _consumer.Commit(consumeResult); // Commit чтобы не зациклиться на невалидном
+                        _consumer.Commit(consumeResult);
                         continue;
                     }
-
-                    // Обработка сообщения (вызов Application-сервиса)
+                    
                     await ProcessNotificationAsync(message, stoppingToken);
-
-                    // Manual commit после успешной обработки
+                    
                     _consumer.Commit(consumeResult);
                     _logger.LogInformation("Message processed and committed: Offset={Offset}", consumeResult.Offset.Value);
+                }
+                catch (ConsumeException ex) when (ex.Error.Code == ErrorCode.UnknownTopicOrPart)
+                {
+                    _logger.LogWarning("Kafka topic not available yet. Waiting and retrying...");
+                    await Task.Delay(3000, stoppingToken);
                 }
                 catch (ConsumeException ex)
                 {
                     _logger.LogError(ex, "Kafka consume error: {Reason}", ex.Error.Reason);
-                    // Не commit — retry в следующей итерации (если persistent error, настройте dead-letter topic)
                 }
                 catch (JsonException ex)
                 {
                     _logger.LogError(ex, "JSON deserialization error, skipping message");
-                    // Commit чтобы не зациклиться (или отправьте в DLQ)
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Unexpected error processing Kafka message");
-                    // Не commit — retry (или логика повторов с DLQ)
                 }
             }
         }
@@ -116,18 +119,15 @@ public class KafkaNotificationConsumer : BackgroundService
 
     private async Task ProcessNotificationAsync(NotificationMessage message, CancellationToken cancellationToken)
     {
-        // INotificationService — scoped, получаем из scope (BackgroundService — singleton)
         using var scope = _serviceProvider.CreateScope();
         var notificationService = scope.ServiceProvider.GetRequiredService<INotificationService>();
-
-        // Маппинг int → enum (Type и TargetType)
+        
         var notificationType = (NotificationType)message.Type;
         var targetType = (TargetType)message.TargetType;
 
         _logger.LogInformation("Processing notification for {Count} users, Type={Type}, TargetType={TargetType}",
             message.UserIds.Count, notificationType, targetType);
-
-        // Вызов AddBatchAsync (создает notifications в БД, отправляет SignalR через sender)
+        
         await notificationService.AddBatchAsync(message.UserIds, message.Title, message.Message, notificationType, targetType);
 
         _logger.LogInformation("Notification batch processed successfully for {Count} users", message.UserIds.Count);
@@ -136,7 +136,7 @@ public class KafkaNotificationConsumer : BackgroundService
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Kafka consumer stopping...");
-        _consumer?.Close(); // Cleanly leave group
+        _consumer?.Close();
         await base.StopAsync(cancellationToken);
     }
 }

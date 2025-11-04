@@ -8,6 +8,7 @@ using UserService.Api.Configuration;
 using UserService.Api.Filters;
 using UserService.Application.Extensions;
 using UserService.DataAccess.Extensions;
+using UserService.Infrastructure.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -70,6 +71,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddServices();
 builder.Services.AddRepositories(builder.Configuration);
+builder.Services.AddInfrastructureServices(builder.Configuration);
 
 var app = builder.Build();
 

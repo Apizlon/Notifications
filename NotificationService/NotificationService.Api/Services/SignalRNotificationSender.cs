@@ -17,13 +17,4 @@ public class SignalRNotificationSender : INotificationSender
     {
         await _hubContext.Clients.Group(userId.ToString()).SendAsync("ReceiveUnreadCount", count);
     }
-
-    public async Task SendUnreadCountToMultipleAsync(List<Guid> userIds, int count)
-    {
-        // Поскольку count может отличаться, используем индивидуальный, но для батча предполагаем одинаковый +1; в реальности вызывать per-user
-        foreach (var userId in userIds)
-        {
-            await SendUnreadCountAsync(userId, count);
-        }
-    }
 }
