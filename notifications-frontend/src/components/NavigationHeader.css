@@ -1,0 +1,175 @@
+.navigation-header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+  padding-left: 4px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Back button */
+.back-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.back-button:hover {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+.back-icon {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.back-text {
+  font-weight: 500;
+}
+
+/* Title */
+.header-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* Profile button */
+.profile-button {
+  background: none;
+  border: none;
+  font-size: 20px;
+  padding: 8px;
+  border-radius: 50%;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-button:hover {
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+/* Logout button */
+.logout-button {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.logout-button:hover {
+  background-color: #dc2626;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .navigation-header {
+    padding: 0 16px;
+  }
+  
+  .header-left {
+    gap: 12px;
+  }
+  
+  .header-title {
+    font-size: 18px;
+  }
+  
+  .header-right {
+    gap: 8px;
+  }
+  
+  .back-button {
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+  
+  .back-icon {
+    font-size: 18px;
+  }
+  
+  .profile-button {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    padding: 6px;
+  }
+  
+  .logout-button {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-left {
+    gap: 8px;
+  }
+  
+  .back-button {
+    padding: 4px 6px;
+  }
+  
+  .back-text {
+    display: none;
+  }
+  
+  .header-right {
+    gap: 4px;
+  }
+  
+  .profile-button {
+    font-size: 16px;
+  }
+}
